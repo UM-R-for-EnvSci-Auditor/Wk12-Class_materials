@@ -1,0 +1,296 @@
+---
+title: "Week 12 - Part I - Conditionals, loops, and functions"
+author: "Jose Luis Rodriguez Gil"
+date: "27/11/2020"
+output: 
+  html_document:
+    number_sections: true
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, include=FALSE}
+
+library(tidyverse)
+library(janitor)
+library(here)
+library(palmerpenguins)
+
+```
+
+```{r my theme, include=FALSE}
+
+source(here("functions", "theme_pepe.R"))
+
+```
+
+# Conditionals
+
+Sometimes you need to calculate something, or change a vaue based on a certain contion (e.g. the value of  adifferent column).
+
+We have already seen in class one a aproach to this, `case_when()`, today we are going to revist that one and see some other options.
+
+## Using `case_when()`
+
+```{r}
+
+penguins %>% 
+  ggplot() + 
+  geom_density(aes(flipper_length_mm, fill = species), alpha = 0.4, colour = NA) +
+  theme_pepe()
+  
+
+```
+
+```{r}
+
+penguins %>% 
+  mutate(fliper_group = case_when(
+    flipper_length_mm <= 190 ~ "Short",
+    190 < flipper_length_mm & flipper_length_mm <= 210 ~ "Medium",
+    flipper_length_mm > 210 ~ "Long",
+  ))
+
+```
+
+```{r}
+
+penguins %>% 
+  mutate(fliper_group = case_when(
+    flipper_length_mm <= 190 ~ "Short",
+    190 < flipper_length_mm & flipper_length_mm <= 210 ~ "Medium",
+    TRUE ~ "Long",
+  ))
+
+```
+
+## Using `if_else()`
+
+```{r}
+
+penguins %>% 
+  mutate(fliper_group = if_else(flipper_length_mm <= 190, "Short", "Not short"))
+
+```
+
+```{r}
+
+penguins %>% 
+  mutate(fliper_group = if_else(flipper_length_mm <= 190, "Short",
+                                if_else(190 < flipper_length_mm & flipper_length_mm <= 210, "Medium", "Short")))
+
+```
+
+Both `case_when()` and `if_else()` are vectorized function. They are very *picky* with the outputs that they give, they really do not like mixing classes, so all posible outputs need to be the same class (e.g. doubles, strings, etc). Unfortunately that includes mixing numbers or strings with **NA**
+
+For example, lets say that we wante dto include another group to cover any other lengths outside of our range and asign those an NA.
+
+```{r, eval=FALSE}
+
+penguins %>% 
+  mutate(fliper_group = case_when(
+    flipper_length_mm <= 190 ~ "Short",
+    190 < flipper_length_mm & flipper_length_mm <= 210 ~ "Medium",
+    flipper_length_mm > 210 ~ "Long",
+    TRUE ~ NA
+  ))
+
+```
+
+That doesn't work, because the NA is being considered of a different class than the text
+
+```{r, eval=FALSE}
+
+penguins %>% 
+  mutate(fliper_group = if_else(flipper_length_mm <= 190, "Short",
+                                if_else(190 < flipper_length_mm & flipper_length_mm <= 210, "Medium",
+                                        if_else(flipper_length_mm > 210, "Long", NA))))
+
+```
+in the same manner, that doesn't work, because the NA is being considered of a different class than the text
+
+
+## Base R `ifelse()`
+
+```{r}
+
+penguins %>% 
+  mutate(fliper_group = ifelse(flipper_length_mm <= 190, "Short",
+                                ifelse(190 < flipper_length_mm & flipper_length_mm <= 210, "Medium",
+                                        ifelse(flipper_length_mm > 210, "Long", NA))))
+
+```
+
+This works. Now, there are good reasons why the tidiverse versions do what they do (e.g. prevent you from doing silly things), but if you really need to, this will allow you to.
+
+
+## Complicating things, using base R's `if(){}else{}`
+
+This is the most versatile option, however, as the most versatile, is also the more complicate dto handle.
+
+One problem is that it is not vectorized. The main "problem" with this is that the condition it uses is going to be one single value, not a vector, and if you give it a vector, it is going to use only the first value.
+
+```{r}
+
+penguins %>% 
+  mutate(flipper_group = 
+           if(flipper_length_mm <= 190){"Short"}else{"Not short"}
+           )
+
+
+```
+
+
+
+```{r}
+
+test_df <- if(penguins$flipper_length_mm <= 190){"Short"}else{"Not short"}
+
+print(test_df)
+
+```
+
+
+
+That means that in order to get the traditional `if(){}else{}` to work, e would need to "walk it" though the dataset. Good thing that we now know how to do that! Let's bring all the `map()` power on!
+
+```{r}
+
+penguins %>% 
+  mutate(flipper_group = pmap_chr(list(flipper_length_mm),
+                              ~if(is.na(..1)){NA}
+                              else if(..1 <= 190){"Short"}
+                              else if(190 <..1 & ..1 <= 210){"Medium"}
+                              else{"Long"}))
+
+
+```
+
+
+Also, because the base `if(){}else{}` it allows for outputs that are more complicated, like model outputs, or plots!
+
+```{r}
+
+test_plots <- tibble(colour = c("red", "blue", "green")) %>% 
+  mutate(plot = pmap(list(colour),
+                     ~if(..1 == "red"){
+                       ggplot() +
+                         geom_rect(aes(xmin = 0, xmax = 10, ymin = 0, ymax = 10), fill = "red")
+                     }else if(..1 == "blue"){
+                       ggplot() +
+                         geom_rect(aes(xmin = 0, xmax = 10, ymin = 0, ymax = 10), fill = "blue")
+                     }else{
+                       ggplot() +
+                         geom_rect(aes(xmin = 0, xmax = 10, ymin = 0, ymax = 10), fill = "green")
+                     }
+  ))
+
+test_plots$plot
+
+
+```
+
+
+
+# Loops
+
+R doesn't care if you write something 1000 times or have it copy it 1000 times. The second is a lot easier for you
+
+```{r}
+
+
+i <- 2
+
+i <- i + 2
+i <- i + 2
+i <- i + 2
+i <- i + 2
+i <- i + 2
+i <- i + 2
+
+print(i)
+
+```
+
+
+or
+
+```{r}
+
+i <- 2
+
+for (counter in 1:6){
+  
+  i <- i + 2
+  
+  print(i)
+}
+
+```
+
+
+
+```{r}
+penguins_pepe <- penguins
+```
+
+```{r}
+
+penguins_pepe$flipper_group <- NA
+
+```
+
+
+```{r}
+
+
+for(i in 1:length(penguins_pepe$flipper_length_mm)){
+  
+  penguins_pepe$flipper_group[i] <- if(is.na(penguins_pepe$flipper_length_mm[i])){NA}
+  else if(penguins_pepe$flipper_length_mm[i] <= 190){"Short"}
+  else if(190 < penguins_pepe$flipper_length_mm[i] & penguins_pepe$flipper_length_mm[i] <= 210){"Medium"}
+  else{"Long"}
+
+}
+
+
+print(penguins_pepe)
+
+```
+
+
+# Functions
+
+```{r}
+
+short_flipper <- function(data = data){
+  
+  data$flipper_group <- NA
+  
+  for(i in 1:length(data$flipper_length_mm)){
+    
+    data$flipper_group[i] <- if(is.na(data$flipper_length_mm[i])){NA}
+    else if(data$flipper_length_mm[i] <= 190){"Short"}
+    else if(190 < data$flipper_length_mm[i] & data$flipper_length_mm[i] <= 210){"Medium"}
+    else{"Long"}
+  }
+  
+  print(data)
+  
+}
+
+
+```
+
+```{r}
+
+penguins %>% 
+  short_flipper()
+
+```
+
+
+
